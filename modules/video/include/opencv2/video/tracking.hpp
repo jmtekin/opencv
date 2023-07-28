@@ -182,6 +182,13 @@ CV_EXPORTS_W void calcOpticalFlowPyrLK( InputArray prevImg, InputArray nextImg,
                                         TermCriteria criteria = TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01),
                                         int flags = 0, double minEigThreshold = 1e-4 );
 
+CV_EXPORTS_W void calcOpticalFlowDepthAwarePyrLK( InputArray prevImg, InputArray nextImg, InputArray depthMap,
+                                        InputArray prevPts, InputOutputArray nextPts,
+                                        OutputArray status, OutputArray err,
+                                        Size winSize = Size(21,21), int maxLevel = 3,
+                                        TermCriteria criteria = TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01),
+                                        int flags = 0, double minEigThreshold = 1e-4 );
+
 /** @brief Computes a dense optical flow using the Gunnar Farneback's algorithm.
 
 @param prev first 8-bit single-channel input image.
@@ -705,6 +712,35 @@ public:
             double minEigThreshold = 1e-4);
 };
 
+class CV_EXPORTS_W DepthAwareSparsePyrLKOpticalFlow : public SparseOpticalFlow
+{
+public:
+    CV_WRAP virtual Size getWinSize() const = 0;
+    CV_WRAP virtual void setWinSize(Size winSize) = 0;
+
+    CV_WRAP virtual int getMaxLevel() const = 0;
+    CV_WRAP virtual void setMaxLevel(int maxLevel) = 0;
+
+    CV_WRAP virtual TermCriteria getTermCriteria() const = 0;
+    CV_WRAP virtual void setTermCriteria(TermCriteria& crit) = 0;
+
+    CV_WRAP virtual int getFlags() const = 0;
+    CV_WRAP virtual void setFlags(int flags) = 0;
+
+    CV_WRAP virtual double getMinEigThreshold() const = 0;
+    CV_WRAP virtual void setMinEigThreshold(double minEigThreshold) = 0;
+
+    CV_WRAP virtual Mat getDepthMap() const = 0;
+    CV_WRAP virtual void setDepthMap(InputArray depthMap) = 0;
+
+    CV_WRAP static Ptr<DepthAwareSparsePyrLKOpticalFlow> create(
+            Size winSize = Size(21, 21),
+            int maxLevel = 3, TermCriteria crit =
+            TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 0.01),
+            int flags = 0,
+            double minEigThreshold = 1e-4,
+            InputArray depthMap = cv::noArray());
+};
 
 
 
