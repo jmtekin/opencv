@@ -124,6 +124,11 @@ CV_EXPORTS_W int buildOpticalFlowPyramid( InputArray img, OutputArrayOfArrays py
                                           int derivBorder = BORDER_CONSTANT,
                                           bool tryReuseInputImage = true );
 
+CV_EXPORTS_W int buildDepthPyramid( InputArray img, OutputArrayOfArrays pyramid,
+                                          Size winSize, int maxLevel,
+                                          int pyrBorder = BORDER_REFLECT_101,
+                                          bool tryReuseInputImage = true );
+
 /** @example samples/cpp/lkdemo.cpp
 An example using the Lucas-Kanade optical flow algorithm
 */

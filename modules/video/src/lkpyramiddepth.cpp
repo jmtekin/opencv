@@ -46,6 +46,8 @@
 #include "lkpyramid.hpp"
 #include "opencl_kernels_video.hpp"
 #include "opencv2/core/hal/intrin.hpp"
+//#include <opencv2/highgui.hpp>
+
 #ifdef HAVE_OPENCV_CALIB3D
 #include "opencv2/calib3d.hpp"
 #endif
@@ -103,6 +105,7 @@ typedef float itemtype;
 
 void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) const
 {
+
     CV_INSTRUMENT_REGION();
 
     Point2f halfWin((winSize.width-1)*0.5f, (winSize.height-1)*0.5f);
@@ -111,19 +114,27 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
     const Mat& DM = *depthMap;
     const Mat& derivI = *prevDeriv;
 
+    // cv::imwrite("prev" + std::to_string(level) + ".jpg", I);
+    // cv::imwrite("next" + std::to_string(level) + ".jpg", J);
+    // cv::imwrite("depth" + std::to_string(level) + ".png", DM);
+
+    //printf("level %d\n", level);
+
     int j, cn = I.channels(), cnd = DM.channels(), cn2 = cn*2;
     cv::AutoBuffer<deriv_type> _buf(winSize.area()*(cn + cn2));
-    cv::AutoBuffer<float> _dbuf(winSize.area()*(cnd));
+    cv::AutoBuffer<char> _dbuf(winSize.area()*(cnd));
     int derivDepth = DataType<deriv_type>::depth;
 
     Mat IWinBuf(winSize, CV_MAKETYPE(derivDepth, cn), _buf.data());
     Mat derivIWinBuf(winSize, CV_MAKETYPE(derivDepth, cn2), _buf.data() + winSize.area()*cn);
-    Mat depthWinBuf(winSize, CV_MAKETYPE(DataType<float>::depth, cnd), _dbuf.data());
+    Mat depthWinBuf(winSize, CV_MAKETYPE(DataType<char>::depth, cnd), _dbuf.data());
 
     for( int ptidx = range.start; ptidx < range.end; ptidx++ )
     {
         Point2f prevPt = prevPts[ptidx]*(float)(1./(1 << level));
+        Point2f prevDepthPt = prevPts[ptidx];
         Point2f nextPt;
+        depth_type depthPt = DM.at<depth_type>(cvFloor(prevPt.y), cvFloor(prevPt.x));
         if( level == maxLevel )
         {
             if( flags & OPTFLOW_USE_INITIAL_FLOW )
@@ -135,10 +146,15 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
             nextPt = nextPts[ptidx]*2.f;
         nextPts[ptidx] = nextPt;
 
-        Point2i iprevPt, inextPt;
+        Point2i iprevPt, iprevDepthPt, inextPt;
         prevPt -= halfWin;
+        prevDepthPt -= halfWin;
+
         iprevPt.x = cvFloor(prevPt.x);
         iprevPt.y = cvFloor(prevPt.y);
+
+        iprevDepthPt.x = cvFloor(prevDepthPt.x);
+        iprevDepthPt.y = cvFloor(prevDepthPt.y);
 
         if( iprevPt.x < -winSize.width || iprevPt.x >= derivI.cols ||
             iprevPt.y < -winSize.height || iprevPt.y >= derivI.rows )
@@ -167,7 +183,6 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
         int stepJ = (int)(J.step/J.elemSize1());
         int stepD = (int)(DM.step/DM.elemSize1());
 
-        depth_type depthPt = DM.at<depth_type>(iprevPt.y, iprevPt.x);
         acctype iA11 = 0, iA12 = 0, iA22 = 0;
         float A11, A12, A22;
 
@@ -200,11 +215,11 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
         {
             const uchar* src = I.ptr() + (y + iprevPt.y)*stepI + iprevPt.x*cn;
             const deriv_type* dsrc = derivI.ptr<deriv_type>() + (y + iprevPt.y)*dstep + iprevPt.x*cn2;
-            const depth_type* wdsrc = DM.ptr<depth_type>() + (y + iprevPt.y)*stepD + iprevPt.x*cnd;
+            const depth_type* dmsrc = DM.ptr<depth_type>() + (y + iprevDepthPt.y)*stepD + iprevDepthPt.x*cnd;
 
             deriv_type* Iptr = IWinBuf.ptr<deriv_type>(y);
             deriv_type* dIptr = derivIWinBuf.ptr<deriv_type>(y);
-            float* Wdptr = depthWinBuf.ptr<float>(y);
+            char* dmPtr = depthWinBuf.ptr<char>(y);
 
             x = 0;
 
@@ -372,25 +387,30 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
                                        dsrc[dstep]*iw10 + dsrc[dstep+cn2]*iw11, W_BITS1);
                 int iyval = CV_DESCALE(dsrc[1]*iw00 + dsrc[cn2+1]*iw01 + dsrc[dstep+1]*iw10 +
                                        dsrc[dstep+cn2+1]*iw11, W_BITS1);
-                float wdval;
-                if (wdsrc[x] != 0 && depthPt != 0)
-                    wdval = std::exp( -std::abs(wdsrc[x] - depthPt) / 200 );
-                else
-                    wdval = 1;
+
+                ushort dmdxy = CV_DESCALE(
+                    std::abs(dmsrc[x+stepD] + dmsrc[x-stepD] + 
+                    dmsrc[x+cnd] + dmsrc[x-cnd] - 
+                    4*dmsrc[x]), 2);
+
+                char dmval = depthPt ? (std::abs(dmsrc[x] - depthPt) > 200 || dmdxy > 50 ? 0 : 1) : 1;
 
                 Iptr[x] = (short)ival;
                 dIptr[0] = (short)ixval;
                 dIptr[1] = (short)iyval;
-                Wdptr[x] = wdval;
+                dmPtr[x] = dmval;
 
-                iA11 += (itemtype)(ixval*ixval*wdval);
-                iA12 += (itemtype)(ixval*iyval*wdval);
-                iA22 += (itemtype)(iyval*iyval*wdval);
+                //printf("%d ", dmval);
+
+                iA11 += (itemtype)(ixval*ixval*dmval);
+                iA12 += (itemtype)(ixval*iyval*dmval);
+                iA22 += (itemtype)(iyval*iyval*dmval);
             }
+            //printf("\n");
         }
-
+        //printf("\n");
+            
         
-
 #if CV_SIMD128 && !CV_NEON && 0
         iA11 += v_reduce_sum(qA11);
         iA12 += v_reduce_sum(qA12);
@@ -468,7 +488,7 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
                 const uchar* Jptr = J.ptr() + (y + inextPt.y)*stepJ + inextPt.x*cn;
                 const deriv_type* Iptr = IWinBuf.ptr<deriv_type>(y);
                 const deriv_type* dIptr = derivIWinBuf.ptr<deriv_type>(y);
-                float* Wdptr = depthWinBuf.ptr<float>(y);
+                char* dmPtr = depthWinBuf.ptr<char>(y);
 
                 x = 0;
 
@@ -578,11 +598,14 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
                     int diff = CV_DESCALE(Jptr[x]*iw00 + Jptr[x+cn]*iw01 +
                                           Jptr[x+stepJ]*iw10 + Jptr[x+stepJ+cn]*iw11,
                                           W_BITS1-5) - Iptr[x];
-                    ib1 += (itemtype)(diff*dIptr[0]*Wdptr[x]);
-                    ib2 += (itemtype)(diff*dIptr[1]*Wdptr[x]);
-                    
+                    ib1 += (itemtype)(diff*dIptr[0]*dmPtr[x]);
+                    ib2 += (itemtype)(diff*dIptr[1]*dmPtr[x]);
+
                 }
+
             }
+
+
 
 
 #if CV_SIMD128 && !CV_NEON && 0
@@ -661,6 +684,94 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
             err[ptidx] = errval * 1.f/(32*winSize.width*cn*winSize.height);
         }
     }
+}
+
+int cv::buildDepthPyramid(InputArray _img, OutputArrayOfArrays pyramid, Size winSize, int maxLevel, 
+                          int pyrBorder, bool tryReuseInputImage)
+{
+    CV_INSTRUMENT_REGION();
+
+    Mat img = _img.getMat();
+    CV_Assert(img.depth() == CV_16U && winSize.width > 2 && winSize.height > 2 );
+
+    pyramid.create(1, (maxLevel + 1), 0 /*type*/, -1, true);
+
+    // level 0
+    bool lvl0IsSet = false;
+    if(tryReuseInputImage && img.isSubmatrix() && (pyrBorder & BORDER_ISOLATED) == 0)
+    {
+        Size wholeSize;
+        Point ofs;
+        img.locateROI(wholeSize, ofs);
+        if (ofs.x >= winSize.width && ofs.y >= winSize.height
+            && ofs.x + img.cols + winSize.width <= wholeSize.width
+            && ofs.y + img.rows + winSize.height <= wholeSize.height)
+        {
+            pyramid.getMatRef(0) = img;
+            lvl0IsSet = true;
+        }
+    }
+
+    if(!lvl0IsSet)
+    {
+        Mat& temp = pyramid.getMatRef(0);
+
+        if(!temp.empty())
+            temp.adjustROI(winSize.height, winSize.height, winSize.width, winSize.width);
+        if(temp.type() != img.type() || temp.cols != winSize.width*2 + img.cols || temp.rows != winSize.height * 2 + img.rows)
+            temp.create(img.rows + winSize.height*2, img.cols + winSize.width*2, img.type());
+
+        if(pyrBorder == BORDER_TRANSPARENT)
+            img.copyTo(temp(Rect(winSize.width, winSize.height, img.cols, img.rows)));
+        else
+            copyMakeBorder(img, temp, winSize.height, winSize.height, winSize.width, winSize.width, pyrBorder);
+        temp.adjustROI(-winSize.height, -winSize.height, -winSize.width, -winSize.width);
+    }
+
+    Size sz = img.size();
+    Mat prevLevel = pyramid.getMatRef(0);
+    Mat thisLevel = prevLevel;
+
+    for(int level = 0; level <= maxLevel; ++level)
+    {
+        if (level != 0)
+        {
+            Mat& temp = pyramid.getMatRef(level);
+
+            if(!temp.empty())
+                temp.adjustROI(winSize.height, winSize.height, winSize.width, winSize.width);
+            if(temp.type() != img.type() || temp.cols != winSize.width*2 + sz.width || temp.rows != winSize.height * 2 + sz.height)
+                temp.create(sz.height + winSize.height*2, sz.width + winSize.width*2, img.type());
+
+            thisLevel = temp(Rect(winSize.width, winSize.height, sz.width, sz.height));
+            // Replace pyrDown with bilateralFilter + resize
+            Mat bilat;
+            Mat floatPrevLevel;
+            prevLevel.convertTo(floatPrevLevel, CV_32F);
+            int d = 15; // Diameter of each pixel neighborhood (tune as needed)
+            double sigmaColor = 75.0; // Larger values mean farther colors within the pixel neighborhood will be mixed together (tune as needed)
+            double sigmaSpace = 75.0; // Larger values mean farther pixels will influence each other (tune as needed)
+            bilateralFilter(floatPrevLevel, bilat, d, sigmaColor, sigmaSpace);
+            resize(bilat, thisLevel, sz);
+
+            thisLevel.convertTo(thisLevel, CV_16U);
+
+            if(pyrBorder != BORDER_TRANSPARENT)
+                copyMakeBorder(thisLevel, temp, winSize.height, winSize.height, winSize.width, winSize.width, pyrBorder|BORDER_ISOLATED);
+            temp.adjustROI(-winSize.height, -winSize.height, -winSize.width, -winSize.width);
+        }
+
+        sz = Size((sz.width+1)/2, (sz.height+1)/2);
+        if( sz.width <= winSize.width || sz.height <= winSize.height )
+        {
+            pyramid.create(1, (level + 1), 0 /*type*/, -1, true);//check this
+            return level;
+        }
+
+        prevLevel = thisLevel;
+    }
+       
+    return maxLevel;
 }
 
 
@@ -1090,9 +1201,8 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
 {
     CV_INSTRUMENT_REGION();
 
-    CV_OCL_RUN(ocl::isOpenCLActivated() &&
-               (_prevImg.isUMat() || _nextImg.isUMat()) &&
-               ocl::Image2D::isFormatSupported(CV_32F, 1, false),
+    //disabled
+    CV_OCL_RUN(false,
                ocl_calcOpticalFlowPyrLK(_prevImg, _nextImg, _prevPts, _nextPts, _status, _err))
 
     // Disabled due to bad accuracy
@@ -1141,11 +1251,13 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
         err = errMat.ptr<float>();
     }
 
-    std::vector<Mat> prevPyr, nextPyr;
+    std::vector<Mat> prevPyr, nextPyr, depthPyr;
     int levels1 = -1;
     int lvlStep1 = 1;
     int levels2 = -1;
     int lvlStep2 = 1;
+    int levels3 = -1;
+    int lvlStep3 = 1;
 
     if(_prevImg.kind() == _InputArray::STD_VECTOR_MAT)
     {
@@ -1203,11 +1315,36 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
             maxLevel = levels2;
     }
 
+    // if(depthMap.kind() == _InputArray::STD_VECTOR_MAT)
+    // {
+    //     depthMap.getMatVector(depthPyr);
+
+    //     levels3 = int(depthPyr.size()) - 1;
+    //     CV_Assert(levels3 >= 0);
+
+    //     // ensure that pyramid has required padding
+    //     if(levels3 > 0)
+    //     {
+    //         Size fullSize;
+    //         Point ofs;
+    //         depthPyr[lvlStep3].locateROI(fullSize, ofs);
+    //         CV_Assert(ofs.x >= winSize.width && ofs.y >= winSize.height
+    //             && ofs.x + depthPyr[lvlStep3].cols + winSize.width <= fullSize.width
+    //             && ofs.y + depthPyr[lvlStep3].rows + winSize.height <= fullSize.height);
+    //     }
+
+    //     if(levels3 < maxLevel)
+    //         maxLevel = levels3;
+    // }
+
     if (levels1 < 0)
         maxLevel = buildOpticalFlowPyramid(_prevImg, prevPyr, winSize, maxLevel, false);
 
     if (levels2 < 0)
         maxLevel = buildOpticalFlowPyramid(_nextImg, nextPyr, winSize, maxLevel, false);
+
+    // if (levels3 < 0)
+    //     maxLevel = buildDepthPyramid(depthMap, depthPyr, winSize, maxLevel, false);
 
     if( (criteria.type & TermCriteria::COUNT) == 0 )
         criteria.maxCount = 30;
@@ -1223,7 +1360,8 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
     Mat derivIBuf;
     if(lvlStep1 == 1)
         derivIBuf.create(prevPyr[0].rows + winSize.height*2, prevPyr[0].cols + winSize.width*2, CV_MAKETYPE(derivDepth, prevPyr[0].channels() * 2));
-
+            
+            
     for( level = maxLevel; level >= 0; level-- )
     {
         Mat derivI;
@@ -1249,7 +1387,9 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
                                                           winSize, criteria, level, maxLevel,
                                                           flags, (float)minEigThreshold, 
                                                           depthMap));
+    
     }
+    
 }
 
 } // namespace
