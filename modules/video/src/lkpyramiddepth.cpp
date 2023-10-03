@@ -46,8 +46,6 @@
 #include "lkpyramid.hpp"
 #include "opencl_kernels_video.hpp"
 #include "opencv2/core/hal/intrin.hpp"
-//#include <opencv2/highgui.hpp>
-
 #ifdef HAVE_OPENCV_CALIB3D
 #include "opencv2/calib3d.hpp"
 #endif
@@ -113,12 +111,6 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
     const Mat& J = *nextImg;
     const Mat& DM = *depthMap;
     const Mat& derivI = *prevDeriv;
-
-    // cv::imwrite("prev" + std::to_string(level) + ".jpg", I);
-    // cv::imwrite("next" + std::to_string(level) + ".jpg", J);
-    // cv::imwrite("depth" + std::to_string(level) + ".png", DM);
-
-    //printf("level %d\n", level);
 
     int j, cn = I.channels(), cnd = DM.channels(), cn2 = cn*2;
     cv::AutoBuffer<deriv_type> _buf(winSize.area()*(cn + cn2));
@@ -400,15 +392,11 @@ void cv::detail::DepthAwareLKTrackerInvoker::operator()(const Range& range) cons
                 dIptr[1] = (short)iyval;
                 dmPtr[x] = dmval;
 
-                //printf("%d ", dmval);
-
                 iA11 += (itemtype)(ixval*ixval*dmval);
                 iA12 += (itemtype)(ixval*iyval*dmval);
                 iA22 += (itemtype)(iyval*iyval*dmval);
             }
-            //printf("\n");
         }
-        //printf("\n");
             
         
 #if CV_SIMD128 && !CV_NEON && 0
@@ -1315,36 +1303,11 @@ void DepthAwareSparsePyrLKOpticalFlowImpl::calc( InputArray _prevImg, InputArray
             maxLevel = levels2;
     }
 
-    // if(depthMap.kind() == _InputArray::STD_VECTOR_MAT)
-    // {
-    //     depthMap.getMatVector(depthPyr);
-
-    //     levels3 = int(depthPyr.size()) - 1;
-    //     CV_Assert(levels3 >= 0);
-
-    //     // ensure that pyramid has required padding
-    //     if(levels3 > 0)
-    //     {
-    //         Size fullSize;
-    //         Point ofs;
-    //         depthPyr[lvlStep3].locateROI(fullSize, ofs);
-    //         CV_Assert(ofs.x >= winSize.width && ofs.y >= winSize.height
-    //             && ofs.x + depthPyr[lvlStep3].cols + winSize.width <= fullSize.width
-    //             && ofs.y + depthPyr[lvlStep3].rows + winSize.height <= fullSize.height);
-    //     }
-
-    //     if(levels3 < maxLevel)
-    //         maxLevel = levels3;
-    // }
-
     if (levels1 < 0)
         maxLevel = buildOpticalFlowPyramid(_prevImg, prevPyr, winSize, maxLevel, false);
 
     if (levels2 < 0)
         maxLevel = buildOpticalFlowPyramid(_nextImg, nextPyr, winSize, maxLevel, false);
-
-    // if (levels3 < 0)
-    //     maxLevel = buildDepthPyramid(depthMap, depthPyr, winSize, maxLevel, false);
 
     if( (criteria.type & TermCriteria::COUNT) == 0 )
         criteria.maxCount = 30;

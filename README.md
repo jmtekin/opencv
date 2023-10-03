@@ -1,3 +1,12 @@
+## Fork
+This fork instroduces the depth aware Lucas Kanade algorithm which can be used as an improved version of the regular one when depth data is available.
+
+Documentation for this algorithm can be found in its associated paper here (no link yet, its not done)
+
+A demonstrative video can be found here (no link yet, its not done)
+
+**Important note**: No hardware optimization have been implemented for this algorithm. If this algorithm is to be used in pratice it is recommended these optimizations be implemented. 
+
 ## OpenCV: Open Source Computer Vision Library
 
 ### Resources
