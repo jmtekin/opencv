@@ -244,7 +244,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
         acctype iA11 = 0, iA12 = 0, iA22 = 0;
         float A11, A12, A22;
 
-#if CV_SIMD128 && !CV_NEON
+#if CV_SIMD128 && !CV_NEON && 0
         v_int16x8 qw0((short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01));
         v_int16x8 qw1((short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11));
         v_int32x4 qdelta_d = v_setall_s32(1 << (W_BITS1-1));
@@ -252,7 +252,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
         v_float32x4 qA11 = v_setzero_f32(), qA12 = v_setzero_f32(), qA22 = v_setzero_f32();
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
 
         float CV_DECL_ALIGNED(16) nA11[] = { 0, 0, 0, 0 }, nA12[] = { 0, 0, 0, 0 }, nA22[] = { 0, 0, 0, 0 };
         const int shifter1 = -(W_BITS - 5); //negative so it shifts right
@@ -279,7 +279,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
 
             x = 0;
 
-#if CV_SIMD128 && !CV_NEON
+#if CV_SIMD128 && !CV_NEON && 0
             for( ; x <= winSize.width*cn - 8; x += 8, dsrc += 8*2, dIptr += 8*2 )
             {
                 v_int32x4 t0, t1;
@@ -351,7 +351,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
             }
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
             for( ; x <= winSize.width*cn - 4; x += 4, dsrc += 4*2, dIptr += 4*2 )
             {
 
@@ -444,6 +444,8 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
                 int iyval = CV_DESCALE(dsrc[1]*iw00 + dsrc[cn2+1]*iw01 + dsrc[dstep+1]*iw10 +
                                        dsrc[dstep+cn2+1]*iw11, W_BITS1);
 
+                
+
                 Iptr[x] = (short)ival;
                 dIptr[0] = (short)ixval;
                 dIptr[1] = (short)iyval;
@@ -454,13 +456,13 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
             }
         }
 
-#if CV_SIMD128 && !CV_NEON
+#if CV_SIMD128 && !CV_NEON && 0
         iA11 += v_reduce_sum(qA11);
         iA12 += v_reduce_sum(qA12);
         iA22 += v_reduce_sum(qA22);
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
         iA11 += nA11[0] + nA11[1] + nA11[2] + nA11[3];
         iA12 += nA12[0] + nA12[1] + nA12[2] + nA12[3];
         iA22 += nA22[0] + nA22[1] + nA22[2] + nA22[3];
@@ -510,13 +512,13 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
             iw11 = (1 << W_BITS) - iw00 - iw01 - iw10;
             acctype ib1 = 0, ib2 = 0;
             float b1, b2;
-#if CV_SIMD128 && !CV_NEON
+#if CV_SIMD128 && !CV_NEON && 0
             qw0 = v_int16x8((short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01), (short)(iw00), (short)(iw01));
             qw1 = v_int16x8((short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11), (short)(iw10), (short)(iw11));
             v_float32x4 qb0 = v_setzero_f32(), qb1 = v_setzero_f32();
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
             float CV_DECL_ALIGNED(16) nB1[] = { 0,0,0,0 }, nB2[] = { 0,0,0,0 };
 
             const int16x4_t d26_2 = vdup_n_s16((int16_t)iw00);
@@ -534,7 +536,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
 
                 x = 0;
 
-#if CV_SIMD128 && !CV_NEON
+#if CV_SIMD128 && !CV_NEON && 0
                 for( ; x <= winSize.width*cn - 8; x += 8, dIptr += 8*2 )
                 {
                     v_int16x8 diff0 = v_reinterpret_as_s16(v_load(Iptr + x)), diff1, diff2;
@@ -563,7 +565,7 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
                 }
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
                 for( ; x <= winSize.width*cn - 8; x += 8, dIptr += 8*2 )
                 {
 
@@ -644,15 +646,15 @@ void cv::detail::LKTrackerInvoker::operator()(const Range& range) const
                     ib2 += (itemtype)(diff*dIptr[1]);
                 }
             }
-
-#if CV_SIMD128 && !CV_NEON
+            
+#if CV_SIMD128 && !CV_NEON && 0
             v_float32x4 qf0, qf1;
             v_recombine(v_interleave_pairs(qb0 + qb1), v_setzero_f32(), qf0, qf1);
             ib1 += v_reduce_sum(qf0);
             ib2 += v_reduce_sum(qf1);
 #endif
 
-#if CV_NEON
+#if CV_NEON && 0
 
             ib1 += (float)(nB1[0] + nB1[1] + nB1[2] + nB1[3]);
             ib2 += (float)(nB2[0] + nB2[1] + nB2[2] + nB2[3]);
